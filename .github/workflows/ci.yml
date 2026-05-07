@@ -45,6 +45,12 @@ jobs:
         run: node scripts/check-typecheck-baseline.mjs
 
       - name: Production build
+        # gamepack (apps/web/public/cdn/full-pack.7z, 140 MB) is gitignored;
+        # CI just verifies the build compiles and stays under bundle caps,
+        # so skip the gamepack-presence guard. Production deploys MUST
+        # populate the file via `pnpm fetch:gamepack` before building.
+        env:
+          SKIP_GAMEPACK_CHECK: '1'
         run: pnpm build
 
       # Bundle size gated against `.bundle-baseline.json`. CI fails if any

@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @ra2/web dev",
+    "prebuild": "node scripts/check-gamepack.mjs",
     "build": "pnpm --filter @ra2/web build",
     "preview": "pnpm --filter @ra2/web preview",
     "typecheck:entry": "pnpm --filter @ra2/web typecheck:entry",
