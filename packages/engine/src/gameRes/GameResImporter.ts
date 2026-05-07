@@ -1,6 +1,13 @@
 import { MixFile } from '@ra2/data/MixFile';
 import { Engine, EngineType } from '../Engine';
 import { sleep } from '@ra2/util/time';
+// Co-located wasm: Vite hashes + serves it from dist/assets so the JS
+// shim (7z-wasm npm pkg) and the wasm binary always match versions.
+// Without this, locateFile pointed at /7zz.wasm in apps/web/public/ —
+// which was a leftover 1.1.0-era binary while 7z-wasm@^1.1.0 resolved
+// to 1.2.0 → WebAssembly.RuntimeError on instantiate.
+// @ts-ignore — Vite handles ?url for binary assets
+import sevenZipWasmUrl from '7z-wasm/7zz.wasm?url';
 import { ChecksumError } from './importError/ChecksumError';
 import { FileNotFoundError as GameResFileNotFoundError } from './importError/FileNotFoundError';
 import { ArchiveExtractionError } from './importError/ArchiveExtractionError';
@@ -101,7 +108,7 @@ export class GameResImporter {
                 sevenZipModule = await sevenZipFactory({
                     locateFile: (path: string, scriptDirectory: string) => {
                         if (path === '7zz.wasm') {
-                            return '/7zz.wasm';
+                            return sevenZipWasmUrl;
                         }
                         return path;
                     },
