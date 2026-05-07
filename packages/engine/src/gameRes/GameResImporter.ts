@@ -328,6 +328,62 @@ export class GameResImporter {
         }
         onProgress("Game assets successfully imported.");
     }
+    /**
+     * Auto-import path: fetch each essential .mix from a CDN base URL
+     * (e.g. /cdn/full-pack/ served by Vite from apps/web/public/) and
+     * run it through the same per-mix pipeline the directory branch uses.
+     *
+     * Lets first-launch users skip the file picker entirely when the
+     * gamepack is bundled with the deploy. Returns void on full success;
+     * throws if any required mix can't be fetched or imported.
+     */
+    async importFromCdnDirectory(baseUrl: string, targetRfsRootDir: RealFileSystemDir, onProgress: ImportProgressCallback): Promise<void> {
+        const essentialMixes = ["ra2.mix", "language.mix", "multi.mix", "theme.mix"];
+        const optionalMixes = new Set(["theme.mix"]);
+        const S = this.strings;
+        const base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+        onProgress(S.get("ts:import_preparing_for_import"));
+        for (const mixName of essentialMixes) {
+            const target = base + mixName;
+            let buffer: ArrayBuffer;
+            let downloadedBytes = 0;
+            const toMib = (bytes: number) => bytes / 1024 / 1024;
+            try {
+                buffer = await new HttpRequest().fetchBinary(target, undefined, {
+                    onProgress: (delta, total) => {
+                        downloadedBytes += delta;
+                        const text = total
+                            ? S.get("ts:downloadingpgsize", toMib(downloadedBytes), toMib(total), (downloadedBytes / total) * 100)
+                            : S.get("ts:downloadingpgunkn", toMib(downloadedBytes));
+                        onProgress(text);
+                    },
+                });
+            }
+            catch (e: any) {
+                if (optionalMixes.has(mixName)) {
+                    console.warn(`[GameResImporter] Optional mix "${mixName}" not available at ${target}; skipping.`, e);
+                    continue;
+                }
+                if (e instanceof DownloadError && e.statusCode === 404) {
+                    throw new GameResFileNotFoundError(mixName);
+                }
+                throw e;
+            }
+            onProgress(S.get("ts:import_importing", mixName));
+            const virtualFile = VirtualFile.fromBytes(new Uint8Array(buffer), mixName);
+            await this.importMixArchive(virtualFile, targetRfsRootDir, onProgress, S);
+        }
+        try {
+            await targetRfsRootDir.openFile("ra2.mix");
+        }
+        catch (e) {
+            if (e instanceof VfsFileNotFoundError || e instanceof IOError) {
+                throw new Error("Auto-import verification failed: ra2.mix not found.");
+            }
+            throw e;
+        }
+        onProgress("Game assets auto-imported.");
+    }
     private readFileFromEmFs(emFs: any, filePath: string): VirtualFile {
         emFs.chmod(filePath, 0o700);
         const fileNode = emFs.lookupPath(filePath)["node"];

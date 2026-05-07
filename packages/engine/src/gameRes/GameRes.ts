@@ -147,6 +147,26 @@ export class GameRes {
                 currentConfig.source = GameResSource.Local;
                 configRequiresSave = true;
             }
+            else if (rootDir && this.appConfig.gameresBaseUrl && !this.modName) {
+                // No local files yet — try to auto-populate from the bundled
+                // CDN directory before showing the import dialog. This skips
+                // the "import 7z" UX entirely when the deploy ships the
+                // pre-extracted .mix files at /cdn/full-pack/.
+                try {
+                    console.log('[GameRes] Auto-importing from CDN dir:', this.appConfig.gameresBaseUrl);
+                    await new GameResImporter(this.appConfig, this.strings, this.sentry).importFromCdnDirectory(this.appConfig.gameresBaseUrl, rootDir, (text, image) => {
+                        updateSplashScreen(text, image);
+                        if (text) console.info(text);
+                    });
+                    currentConfig = new GameResConfig("");
+                    currentConfig.source = GameResSource.Local;
+                    configRequiresSave = true;
+                    console.log('[GameRes] Auto-import from CDN succeeded; treating as Local source');
+                }
+                catch (e: any) {
+                    console.warn('[GameRes] Auto-import from CDN failed; falling back to dialog', e);
+                }
+            }
             else {
                 console.log('[GameRes] No game files found in local storage');
             }
