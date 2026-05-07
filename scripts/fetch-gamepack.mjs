@@ -165,11 +165,29 @@ function lowercaseTree(dir) {
 // Files the TS engine cannot consume — stripping them keeps the
 // deployed bundle lean and means the runtime auto-importer doesn't
 // waste bytes pulling them into IndexedDB.
-const USELESS_EXTS = new Set(['.dll', '.exe', '.tlb', '.bat', '.lcf', '.ico', '.dsk']);
+const USELESS_EXTS = new Set([
+    // Windows-native binaries / type libraries / launcher artifacts —
+    // never executed in a browser context.
+    '.dll', '.exe', '.tlb', '.bat', '.lcf', '.ico', '.dsk',
+    // Westwood desktop-only data formats: random-map generator inputs
+    // (.img, .sed), save-game stubs (.sed), patcher metadata (.dat),
+    // legacy preview blobs (.bin). The TS engine has no code path that
+    // opens these — verified by grepping packages/ + apps/web/src/.
+    '.dat', '.sed', '.bin', '.img',
+]);
 const USELESS_NAMES = new Set([
     // empty 5-byte stubs left over from the CD ripper — engine never opens them
     'movies01.mix',
     'movies02.mix',
+    // Orphan mix archives: loadImplicitMixFiles only loads named mixes
+    // (cache.mix, load.mix, …) and loadExtraMixFiles only pattern-matches
+    // *.mmx / *.yro / ecache* / expand* / elocal*. Nothing scans for
+    // maps0?.mix or wdt.mix → they sit unloaded in rfs forever.
+    'maps01.mix',
+    'maps02.mix',
+    'wdt.mix',
+    // Upstream's WeChat / public-account promo image; we ship neither.
+    '@如何导入网页红警.png',
 ]);
 const USELESS_DIRS = new Set([
     // runtime cache from the desktop install; engine recreates as needed
@@ -257,32 +275,30 @@ function writeManifest() {
 async function main() {
     console.log(`[fetch-gamepack] target: ${path.relative(repoRoot, extractDir)}`);
 
-    const manifestPath = path.join(extractDir, 'manifest.json');
-    if (!force && fs.existsSync(manifestPath) && REQUIRED_FILES.every((n) => fs.existsSync(path.join(extractDir, n)))) {
-        console.log('[fetch-gamepack] manifest + required mixes already in place; skipping');
-        console.log('[fetch-gamepack] use --force to re-download and re-extract');
-        verifyRequired();
-        return;
-    }
-
     if (force && fs.existsSync(extractDir)) {
         console.log('[fetch-gamepack] --force: removing existing extract dir');
         fs.rmSync(extractDir, { recursive: true, force: true });
     }
 
-    if (!fs.existsSync(sevenZipCli)) {
-        console.error(`[fetch-gamepack] missing 7z-wasm CLI at ${sevenZipCli}`);
-        console.error('[fetch-gamepack] run `pnpm install` first');
-        process.exit(1);
-    }
-
-    await ensureArchive();
     const alreadyExtracted = fs.existsSync(path.join(extractDir, 'ra2.mix'))
-        || fs.existsSync(path.join(extractDir, 'RA2.MIX'));
+        || fs.existsSync(path.join(extractDir, 'RA2.MIX'))
+        || fs.existsSync(path.join(extractDir, 'language.mix'))
+        || fs.existsSync(path.join(extractDir, 'LANGUAGE.MIX'));
+
+    // Skip the network/extract roundtrip when the gamepack is already on
+    // disk — but still re-run strip + bake + manifest so that updates to
+    // the cleanup rules or media-bake script take effect on the next
+    // `pnpm fetch:gamepack` without forcing a 140 MB re-download.
     if (!alreadyExtracted) {
+        if (!fs.existsSync(sevenZipCli)) {
+            console.error(`[fetch-gamepack] missing 7z-wasm CLI at ${sevenZipCli}`);
+            console.error('[fetch-gamepack] run `pnpm install` first');
+            process.exit(1);
+        }
+        await ensureArchive();
         extract();
     } else {
-        console.log('[fetch-gamepack] extract dir already populated; reusing');
+        console.log('[fetch-gamepack] extract dir already populated; refreshing strip+bake+manifest only');
     }
     lowercaseTree(extractDir);
 
@@ -317,7 +333,7 @@ async function main() {
         console.log('[fetch-gamepack] removed archive (134 MB reclaimed)');
     }
 
-    console.log('[fetch-gamepack] done. /cdn/game-res/v2/ ready; first visit will skip the import dialog.');
+    console.log('[fetch-gamepack] done. /cdn/full-pack/ ready; first visit will skip the import dialog.');
 }
 
 main().catch((err) => {
