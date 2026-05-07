@@ -75,6 +75,44 @@ caps but never auto-update. Edit `.typecheck-baseline.json#maxErrors` or
 - `?test=glsl` — alternate test mode (legacy, see `App.tsx`).
 - `?mod=<name>` — load a mod by name (passed through to GameRes).
 
+### Dev server: HTTP by default, HTTPS opt-in
+
+`pnpm dev` serves plain HTTP on `127.0.0.1:4000`. SharedArrayBuffer is
+not used anywhere in src (verified by grep), so the COOP/COEP headers
+plus self-signed HTTPS cert that the upstream config inherited are
+unnecessary.
+
+To enable HTTPS in dev — useful for testing service workers, Geolocation,
+or anything else gated on a secure context — drop your own cert into
+`certs/server.{key,crt}`. The dev server picks them up automatically;
+script harness (`scripts/lib/config.mjs`) auto-detects the scheme.
+
+### Importing game files
+
+The first screen after splash is GameRes's import dialog with four paths:
+
+1. **点此自动导入** ("Click to auto-import") — pulls
+   `https://download.ra2web.com/full-pack.7z`. **This URL is owned by the
+   upstream RA2WEB project and is not reliably accessible.** Failure
+   surfaces as `ts:downloadfailed` ("无法下载远程资源 …") on top of
+   `ts:import_load_files_failed`. We can't fix this — the asset is
+   intentionally gated by upstream behind their WeChat channel.
+2. **Drag & drop** — drop a folder or archive onto the dashed zone.
+3. **选择文件夹...** ("Select folder") — point to an installed
+   Red Alert 2 directory; the file system access prompt asks for
+   permission.
+4. **选择归档文件...** ("Select archive") — point to an `.rar/.7z/.zip/...`
+   archive containing the game files.
+
+Paths 2-4 work locally if you own a copy of the original game. There is
+no way to run the engine without real game data — EA copyright prevents
+shipping the assets. If `download.ra2web.com` is blocked / 404s for you,
+use one of the manual paths.
+
+The CDN base url is configurable in `apps/web/public/config.ini`
+(`gameresBaseUrl=`, `gameResArchiveUrl=`); point those at any 7z host
+serving a compatible bundle to make auto-import work in your environment.
+
 ### Build-time gates
 
 `import.meta.env.DEV` controls roughly 40 `[Diag]` boot logs in

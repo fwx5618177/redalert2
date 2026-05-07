@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import basicSsl from '@vitejs/plugin-basic-ssl';
 import { visualizer } from 'rollup-plugin-visualizer';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,6 +18,11 @@ const requireFromHere = createRequire(import.meta.url);
 const threePath = requireFromHere.resolve('three');
 const threeMeshlinePath = requireFromHere.resolve('three.meshline');
 
+// HTTPS is opt-in. The codebase doesn't use SharedArrayBuffer anywhere
+// (verified by grep), so COOP/COEP headers + HTTPS aren't required. Drop
+// `@vitejs/plugin-basic-ssl`'s self-signed cert; if you genuinely want
+// HTTPS in dev (e.g. testing service workers, geolocation), drop your
+// own cert into certs/server.{key,crt} and the dev server picks it up.
 const certDir = path.join(repoRoot, 'certs');
 const manualHttpsConfig =
     fs.existsSync(path.join(certDir, 'server.key')) &&
@@ -36,7 +40,6 @@ export default defineConfig({
     root: here,
     plugins: [
         react(),
-        ...(manualHttpsConfig ? [] : [basicSsl()]),
         // Writes apps/web/dist/stats.html (bundle treemap) on every prod build.
         // Open it in a browser to see what's in each chunk. Generated only
         // during build; harmless during dev.
@@ -52,11 +55,9 @@ export default defineConfig({
         host: '0.0.0.0',
         port: devPort,
         strictPort: true,
-        https: manualHttpsConfig ?? {},
-        headers: {
-            'Cross-Origin-Embedder-Policy': 'require-corp',
-            'Cross-Origin-Opener-Policy': 'same-origin',
-        },
+        // Plain HTTP unless certs/server.{key,crt} provided. No COOP/COEP —
+        // SharedArrayBuffer is not used anywhere in src.
+        https: manualHttpsConfig,
         fs: {
             allow: [repoRoot],
         },

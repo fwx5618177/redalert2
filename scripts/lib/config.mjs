@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 
@@ -9,7 +10,15 @@ export const SCRIPTS_DIR = path.join(PROJECT_ROOT, 'scripts');
 
 export const DEV_HOST = '127.0.0.1';
 export const DEV_PORT = 4000;
-export const BASE_URL = `https://${DEV_HOST}:${DEV_PORT}`;
+
+// Vite serves plain HTTP unless certs/server.{key,crt} are present
+// (the manual-cert opt-in path in apps/web/vite.config.ts). Mirror that
+// detection here so smoke flows hit the right scheme without the user
+// passing a flag.
+const certsExist =
+    fs.existsSync(path.join(PROJECT_ROOT, 'certs', 'server.key')) &&
+    fs.existsSync(path.join(PROJECT_ROOT, 'certs', 'server.crt'));
+export const BASE_URL = `${certsExist ? 'https' : 'http'}://${DEV_HOST}:${DEV_PORT}`;
 
 export const TESTER_ROUTES = [
     { hash: '/', name: 'main', requiresGameFiles: false },
