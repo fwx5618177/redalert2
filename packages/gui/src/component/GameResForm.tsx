@@ -36,7 +36,10 @@ export const GameResForm: React.FC<GameResFormProps> = ({ closable, strings, def
         event.preventDefault();
         if (archiveUrl) {
             try {
-                const url = new URL(archiveUrl.trim());
+                // Resolve against current page so relative paths like
+                // `/cdn/full-pack.7z` (Vite-served local mirror) work
+                // alongside absolute https://... URLs.
+                const url = new URL(archiveUrl.trim(), window.location.href);
                 if (url.protocol !== "http:" && url.protocol !== "https:") {
                     alert(strings.get("ts:gameres_invalid_url"));
                 }
@@ -62,7 +65,11 @@ export const GameResForm: React.FC<GameResFormProps> = ({ closable, strings, def
                 <form className="link-container" onSubmit={handleSubmit}>
                     <p className="link-field">
                         <label htmlFor="archiveUrlInput">{strings.get("ts:gameres_download_url")}</label>
-                        <input id="archiveUrlInput" type="url" ref={urlInputRef} value={archiveUrl} onChange={(e) => setArchiveUrl(e.currentTarget.value)} placeholder="https://"/>
+                        {/* type="text" instead of "url" so the browser's
+                            native HTML5 validation accepts relative paths
+                            like `/cdn/full-pack.7z`. JS validates in
+                            handleSubmit (resolves against location). */}
+                        <input id="archiveUrlInput" type="text" ref={urlInputRef} value={archiveUrl} onChange={(e) => setArchiveUrl(e.currentTarget.value)} placeholder="https:// or /cdn/..."/>
                     </p>
                     <p className="download-button">
                         <button type="submit" className="dialog-button" disabled={!archiveUrl?.trim()}>
