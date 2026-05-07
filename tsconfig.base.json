@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "strict": false,
+    "noImplicitAny": false,
+    /* tsc's noFallthroughCasesInSwitch lacks a comment escape (`// falls through`
+     * is honored by eslint's no-fallthrough but NOT by tsc). Several engine
+     * switch statements rely on intentional fallthrough; gate this via eslint
+     * later if the protection is wanted. */
+    "noFallthroughCasesInSwitch": false,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": {
+      "@ra2/util": ["./packages/util/src"],
+      "@ra2/util/*": ["./packages/util/src/*"],
+      "@ra2/data": ["./packages/data/src"],
+      "@ra2/data/*": ["./packages/data/src/*"],
+      "@ra2/engine": ["./packages/engine/src"],
+      "@ra2/engine/*": ["./packages/engine/src/*"],
+      "@ra2/game": ["./packages/game/src"],
+      "@ra2/game/*": ["./packages/game/src/*"],
+      "@ra2/network": ["./packages/network/src"],
+      "@ra2/network/*": ["./packages/network/src/*"],
+      "@ra2/gui": ["./packages/gui/src"],
+      "@ra2/gui/*": ["./packages/gui/src/*"],
+      "@ra2/tools": ["./packages/tools/src"],
+      "@ra2/tools/*": ["./packages/tools/src/*"]
+    }
+  }
+}

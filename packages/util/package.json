@@ -1,0 +1,16 @@
+{
+  "name": "@ra2/util",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "js-logger": "^1.6.1"
+  },
+  "peerDependencies": {
+    "three": "0.183.2"
+  },
+  "devDependencies": {
+    "@types/three": "0.183.1"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@ra2/network",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@ra2/util": "workspace:*",
+    "@ra2/data": "workspace:*",
+    "@ra2/engine": "workspace:*",
+    "@ra2/game": "workspace:*",
+    "@puzzl/core": "^1.0.0-beta.1"
+  }
+}

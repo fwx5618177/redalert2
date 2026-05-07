@@ -30,7 +30,8 @@ It should be noted that the owner of Chronodivide has never open-sourced the gam
 
 ### 运行时和构建
 
-- 包管理与本地运行时：`Bun 1.3.10`
+- 包管理：`pnpm 9+`
+- 运行时：`Node 20+`
 - 开发服务器：`Vite 8.0.1`
 - UI：`React 19.2.4` + `react-dom 19.2.4`
 - 类型系统：`TypeScript 5.9.3`
@@ -42,7 +43,8 @@ It should be noted that the owner of Chronodivide has never open-sourced the gam
 
 ### 环境要求
 
-- `Bun 1.3+`
+- `Node 20+`
+- `pnpm 9+`
 - 现代浏览器，推荐 Chrome / Edge
 - 浏览器需要支持：
   - `WebGL`
@@ -53,8 +55,8 @@ It should be noted that the owner of Chronodivide has never open-sourced the gam
 
 ```bash
 cd redalert2
-bun install
-bun run dev
+pnpm install
+pnpm dev
 ```
 
 默认访问地址：
@@ -66,42 +68,40 @@ http://127.0.0.1:4000
 生产构建与预览：
 
 ```bash
-bun run build
-bun run preview
+pnpm build
+pnpm preview
 ```
 
 类型检查：
 
 ```bash
-bun run typecheck:entry
+pnpm typecheck:entry
 ```
 
 ## 自动化回归
 
-仓库当前已经不再只依赖手点验证。`scripts/` 下维护了一组可直接执行的回归脚本，主要覆盖大厅、进图、机制和 tester 入口。
+`scripts/` 下维护了一组可直接执行的 Playwright 回归脚本，覆盖路由、视口、配置持久化、GameRes 启动等。脚本会自动启动（或复用已有的）`127.0.0.1:4000` 上的 Vite dev server，并在退出时清理。
 
-常用命令包括：
+> **历史背景**：上游仓库 `huangkaoya/redalert2` 把 `scripts/` 和 `docs/` 在 `.gitignore` 中忽略，从未对外发布。当前目录由本仓库 2026-05-07 重新搭建，详见 `docs/notes.md`。
+
+可用命令：
 
 ```bash
-bun run debug:game-res-init
-bun run debug:viewport
-bun run debug:options
-bun run debug:storage-explorer
-bun run debug:skirmish
-bun run debug:skirmish-lobby-data
-bun run debug:victory-exit
-bun run debug:superweapon
-bun run debug:nuke
-bun run debug:radiation
-bun run debug:minimap-shroud
-bun run debug:anti-air-hit
-bun run debug:terror-drone
-bun run debug:chrono-legionnaire
-bun run debug:test-entries
-bun run debug:tester-panels
+pnpm debug:test-entries          # 13 条 hash 路由全部走一遍
+pnpm debug:tester-panels         # 每个 tester 的 window.__ra2test 快照
+pnpm debug:viewport              # 6 种桌面/移动分辨率
+pnpm debug:options               # GeneralOptions 持久化（toggle → reload → 验）
+pnpm debug:storage-explorer      # GameRes 导入入口
+pnpm debug:game-res-init         # 启动期 console 分桶（[Application]/[GameRes]/[VFS]）
+pnpm debug:skirmish-lobby-data   # __ra2debug.skirmishLobby 快照（需要游戏资源）
+pnpm live:runtime                # 长驻 dev server + Playwright 浏览器（Ctrl-C 退出）
 ```
 
-这些脚本的产物默认会写入 `.artifacts/`，便于回看截图和 JSON 结果。
+首次运行前装一次浏览器二进制：`pnpm exec playwright install chromium`。
+
+常用环境变量：`HEADED=1` 显示浏览器窗口；`SLOWMO=200` 放慢动作；`DEBUG_VERBOSE=1` 把 vite 与浏览器 console 透到终端。
+
+脚本产物写到 `.artifacts/<flow-name>/`：截图、`result.json`、`console.log`、`network-errors.log`。
 
 ## 测试入口
 
@@ -127,11 +127,11 @@ bun run debug:tester-panels
 
 ### 核心技术栈
 
+- `Node 20+` + `pnpm 9+`
 - `React 19.2.4`
 - `TypeScript 5.9.3`
 - `Vite 8.0.1`
 - `three 0.183.2`
-- `Bun 1.3.10`
 - `Playwright 1.58.2`
 - `7z-wasm`
 - `file-system-access`
@@ -141,46 +141,58 @@ bun run debug:tester-panels
 
 ### 目录说明
 
+仓库为 **pnpm workspace monorepo**，分层如下：
+
 ```text
 redalert2/
-├── public/          静态资源、配置、locale、遗留样式
-├── scripts/         Playwright 自动化回归脚本
-├── src/
-│   ├── data/        原版资源格式、编码、地图、VFS
-│   ├── engine/      渲染、音频、资源加载、底层引擎能力
-│   ├── game/        游戏逻辑、对象系统、触发器、规则、超武
-│   ├── gui/         主菜单、HUD、选项、游戏内 UI
-│   ├── network/     网络和联机相关基础设施
-│   ├── tools/       独立 tester 页面
-│   └── util/        通用工具
-├── docs/            对齐记录与工程说明
-└── vite.config.ts   开发和构建配置
+├── apps/
+│   └── web/                 主前端 app (@ra2/web)
+│       ├── src/             main.tsx, App.tsx, Application.ts, Gui.ts, ...
+│       ├── public/          静态资源、CSF、locale、CSS
+│       ├── index.html
+│       └── vite.config.ts
+├── packages/
+│   ├── util/   (@ra2/util)    通用工具 + math + Coords + LocalPrefs + ConsoleVars + RouteHelper + DevToolsApi + performance
+│   ├── data/   (@ra2/data)    原版资源格式（MIX/INI/SHP/VXL/HVA/TMP/CSF）+ VFS + Config
+│   ├── engine/ (@ra2/engine)  渲染、音频、资源加载（依赖 util, data）
+│   ├── game/   (@ra2/game)    游戏逻辑、单位、规则、超武、AI、RenderableManager、fx 桥接（依赖 engine, data, util）
+│   ├── network/ (@ra2/network) LAN、Lockstep、Replay（依赖 game）
+│   ├── gui/    (@ra2/gui)     主菜单、HUD、选项、ErrorHandler（依赖 network 及以上层）
+│   └── tools/  (@ra2/tools)   tester 入口（依赖 gui 及以上层）
+├── scripts/                 Playwright 回归 + dev runtime
+├── docs/                    对齐记录与工程说明
+├── pnpm-workspace.yaml
+├── tsconfig.base.json       共享 paths 别名 @ra2/*
+└── package.json             根工作区入口
 ```
+
+依赖方向严格单向：`util ← data ← engine ← game ← {network, gui} ← tools ← apps/web`，无循环依赖。包内引用用相对路径，跨包用 `@ra2/<pkg>/<file>`。
 
 ### 主要模块
 
-`src/engine/`
+`packages/engine/`
 
 - `gfx/`：three 渲染层、材质、批处理、viewport、lighting
-- `renderable/`：游戏对象到可视对象的桥接层
+- `renderable/`：游戏对象到可视对象的桥接层（fx handler 已迁出至 game）
 - `sound/`：音频混音、音乐、音效播放
 - `gameRes/`：资源导入、CDN 加载、缓存与目录处理
 
-`src/game/`
+`packages/game/`
 
 - `gameobject/`：单位、建筑、抛射体、trait、locomotor
 - `rules/`：INI 规则读取与对象规则构建
 - `trigger/`：地图触发器、条件、执行器
 - `superweapon/`：核弹、闪电风暴、超时空等超武逻辑
+- `renderable/fx/handler/`：响应游戏事件触发的视觉效果（从 engine 迁入）
 
-`src/gui/`
+`packages/gui/`
 
 - `screen/mainMenu/`：主菜单、地图选择、大厅、选项
 - `screen/game/`：游戏内 HUD、世界交互、菜单
 - `component/`：React 组件
 - `jsx/`：自定义 UI 渲染桥接
 
-`src/tools/`
+`packages/tools/`
 
 - 提供素材、机制、场景三类 tester 页面
 - 当前是调试结果可视化和自动化断言的重要入口
@@ -188,16 +200,26 @@ redalert2/
 ## 开发命令
 
 ```bash
-bun run dev
-bun run build
-bun run preview
-bun run typecheck:entry
+pnpm dev                   # 开发服务器（Vite，:4000）
+pnpm build                 # 生产构建（含 vendor-three/react/qr/7z/ffmpeg 命名 chunk）
+pnpm preview               # 预览生产构建
+pnpm typecheck             # 全项目 tsc --noEmit（surface 上游 pre-existing 债务）
+pnpm typecheck:baseline    # 与 .typecheck-baseline.json 比对，错误数不许增加
+pnpm typecheck:entry       # 仅入口（main.tsx + App.tsx）—— 快速 sanity check
+pnpm lint                  # ESLint + boundaries（强制 util ← data ← engine ← game ← gui ← tools 单向依赖）
+pnpm test                  # 单元测试（vitest）
 ```
+
+CI 在 `.github/workflows/ci.yml` 配好：每个 PR 跑 `test` + `lint` + `typecheck:baseline`（防退化门）+ `build` + 5 个 Playwright 烟雾流程，artifact 自动上传。
+
+`.typecheck-baseline.json#maxErrors` **目前是 0**——typecheck 任何新错误直接 fail CI。达成路径：47 个真实修复 + 4 个 `@ts-expect-error` 标注的内部私有访问 + 12 个 `@ts-nocheck` 标记的 online-only / upstream-stripped 屏幕（这些屏幕本地无服务器可连，强行补 stub 会撒谎）。详见 `docs/notes.md`。
+
+如果你**真的修了一批 nocheck 文件**：运行 `pnpm typecheck:baseline`——它会比较当前错误数 vs baseline。降错误数永远 OK，只在 baseline 不变就直接通过；你想锁紧 baseline 时直接编辑 `.typecheck-baseline.json` 把 `maxErrors` 调低。我们故意不自动写——一个静默下降的数字会变成没人读的橡皮图章。
 
 ## 文档与调试约定
 
 - 开发端口固定为 `4000`
-- 主要技术对齐记录维护在 `docs/build-alignment-log.md`
+- 主要技术对齐记录维护在 `docs/notes.md`
 - 自动化产物默认输出到 `.artifacts/`
 - 构建通过并不等于所有行为已完全对齐，功能层面仍应优先参考专项脚本和实际流程验证
 
@@ -206,8 +228,9 @@ bun run typecheck:entry
 提交改动前，至少建议执行：
 
 ```bash
-bun run typecheck:entry
-bun run build
+pnpm typecheck:entry
+pnpm build
+pnpm test
 ```
 
 如果改动涉及大厅、资源加载、进图、HUD、机制或 tester，请补跑相应的 `debug:*` 脚本。

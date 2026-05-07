@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: typecheck / test / build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.9.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Unit tests (vitest)
+        run: pnpm test
+
+      - name: Lint (boundary direction)
+        run: pnpm lint
+
+      # Typecheck is gated against `.typecheck-baseline.json#maxErrors`.
+      # Pre-existing pre-monorepo debt is allowed; new code adding more
+      # type errors fails CI. To lower the baseline, fix errors locally
+      # then commit a smaller `maxErrors` value.
+      - name: Typecheck (regression gate)
+        run: node scripts/check-typecheck-baseline.mjs
+
+      - name: Production build
+        run: pnpm build
+
+      - name: Bundle size summary
+        run: |
+          if [ -d apps/web/dist ]; then
+            du -sh apps/web/dist
+            find apps/web/dist -name '*.js' -size +50k -exec ls -lh {} +
+          fi
+
+  smoke:
+    name: Playwright smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.9.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Smoke flows
+        run: |
+          set -e
+          pnpm debug:test-entries
+          pnpm debug:viewport
+          pnpm debug:options
+          pnpm debug:storage-explorer
+          pnpm debug:game-res-init
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-artifacts
+          path: .artifacts/
+          retention-days: 7

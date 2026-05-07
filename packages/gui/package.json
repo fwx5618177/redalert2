@@ -1,0 +1,30 @@
+{
+  "name": "@ra2/gui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@ra2/util": "workspace:*",
+    "@ra2/data": "workspace:*",
+    "@ra2/engine": "workspace:*",
+    "@ra2/game": "workspace:*",
+    "@ra2/network": "workspace:*",
+    "@puzzl/core": "^1.0.0-beta.1",
+    "7z-wasm": "^1.1.0",
+    "classnames": "^2.5.1",
+    "jsqr": "^1.4.0",
+    "qrcode": "^1.5.4",
+    "stats.js": "^0.17.0"
+  },
+  "peerDependencies": {
+    "three": "0.183.2",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@types/three": "0.183.1"
+  }
+}

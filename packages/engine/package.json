@@ -1,0 +1,26 @@
+{
+  "name": "@ra2/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@ra2/util": "workspace:*",
+    "@ra2/data": "workspace:*",
+    "@brakebein/threeoctree": "^2.0.1",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@puzzl/core": "^1.0.0-beta.1",
+    "7z-wasm": "^1.1.0",
+    "file-system-access": "^1.0.4",
+    "liang-barsky": "^1.0.12",
+    "shader-particle-engine": "^1.0.6",
+    "stats.js": "^0.17.0"
+  },
+  "peerDependencies": {
+    "three": "0.183.2",
+    "three.meshline": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.183.1"
+  }
+}

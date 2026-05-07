@@ -46,10 +46,17 @@ web_modules/
 
 # TypeScript cache
 *.tsbuildinfo
+packages/*/dist/
+packages/*/.tsbuild/
+apps/web/dist/
+.tsbuildinfo
 
 # Optional npm cache directory
 .npm
-docs/
+# docs/  -- restored 2026-05-07; was upstream-only-local. See docs/notes.md.
+
+# Claude Code working directory
+.claude/
 
 # Optional eslint cache
 .eslintcache
@@ -62,7 +69,7 @@ docs/
 
 public/cdn/
 .artifacts/
-scripts/
+# scripts/  -- restored 2026-05-07; was upstream-only-local. See docs/notes.md.
 
 # Optional REPL history
 .node_repl_history

@@ -1,0 +1,20 @@
+{
+  "name": "@ra2/tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@ra2/util": "workspace:*",
+    "@ra2/data": "workspace:*",
+    "@ra2/engine": "workspace:*",
+    "@ra2/game": "workspace:*",
+    "@ra2/gui": "workspace:*"
+  },
+  "peerDependencies": {
+    "three": "0.183.2"
+  },
+  "devDependencies": {
+    "@types/three": "0.183.1"
+  }
+}

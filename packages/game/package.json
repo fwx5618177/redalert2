@@ -1,0 +1,22 @@
+{
+  "name": "@ra2/game",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@ra2/util": "workspace:*",
+    "@ra2/data": "workspace:*",
+    "@ra2/engine": "workspace:*",
+    "@datastructures-js/priority-queue": "^6.3.5",
+    "@timohausmann/quadtree-ts": "2.2.2",
+    "mersenne-twister": "^1.1.0"
+  },
+  "peerDependencies": {
+    "three": "0.183.2",
+    "three.meshline": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.183.1"
+  }
+}
