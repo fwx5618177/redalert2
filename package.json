@@ -21,6 +21,7 @@
     "test:watch": "vitest",
     "live:runtime": "node scripts/live-interaction-runtime.mjs",
     "live:runtime:build": "pnpm build && node scripts/live-interaction-runtime.mjs",
+    "fetch:gamepack": "node scripts/fetch-gamepack.mjs",
     "debug:test-entries": "node scripts/test-entry-flow.mjs",
     "debug:tester-panels": "node scripts/tester-panel-flow.mjs",
     "debug:viewport": "node scripts/viewport-flow.mjs",

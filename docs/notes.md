@@ -60,6 +60,7 @@ The full set including CI gates and conditional features:
 | `pnpm test:watch` | vitest in watch mode. |
 | `pnpm debug:<flow>` | One Playwright regression flow — see next section. |
 | `pnpm live:runtime[:build]` | Long-running dev server + Playwright window for interactive poking. |
+| `pnpm fetch:gamepack` | Downloads upstream's `full-pack.7z` (140 MB) into `apps/web/public/cdn/` so the auto-import button works without hitting a CORS wall. Idempotent. |
 
 Both baselines are deliberately manual: when you fix errors / shrink chunks,
 `pnpm typecheck:baseline` and `pnpm bundle:baseline` print suggested new
@@ -91,27 +92,40 @@ script harness (`scripts/lib/config.mjs`) auto-detects the scheme.
 
 The first screen after splash is GameRes's import dialog with four paths:
 
-1. **点此自动导入** ("Click to auto-import") — pulls
-   `https://download.ra2web.com/full-pack.7z`. **This URL is owned by the
-   upstream RA2WEB project and is not reliably accessible.** Failure
-   surfaces as `ts:downloadfailed` ("无法下载远程资源 …") on top of
-   `ts:import_load_files_failed`. We can't fix this — the asset is
-   intentionally gated by upstream behind their WeChat channel.
+1. **点此自动导入** ("Click to auto-import") — fetches
+   `gameResArchiveUrl` (default `/cdn/full-pack.7z`) and extracts it
+   client-side via 7z-wasm. **You must populate the file first**:
+
+   ```bash
+   pnpm fetch:gamepack
+   ```
+
+   Downloads upstream's 140 MB `full-pack.7z` from
+   `https://download.ra2web.com/full-pack.7z` (server-side — bypasses
+   the browser's CORS block; upstream serves the file with no
+   `Access-Control-Allow-Origin` header) into
+   `apps/web/public/cdn/full-pack.7z`. Vite then serves it at
+   `/cdn/full-pack.7z` so the browser fetches same-origin → no CORS
+   issue. The script is idempotent (compares Content-Length); use
+   `--force` to re-download.
+
+   The cdn/ directory is gitignored (large binaries don't belong in git).
+
 2. **Drag & drop** — drop a folder or archive onto the dashed zone.
 3. **选择文件夹...** ("Select folder") — point to an installed
-   Red Alert 2 directory; the file system access prompt asks for
+   Red Alert 2 directory; the File System Access prompt asks for
    permission.
 4. **选择归档文件...** ("Select archive") — point to an `.rar/.7z/.zip/...`
    archive containing the game files.
 
-Paths 2-4 work locally if you own a copy of the original game. There is
-no way to run the engine without real game data — EA copyright prevents
-shipping the assets. If `download.ra2web.com` is blocked / 404s for you,
-use one of the manual paths.
+EA copyright prevents shipping game assets in this repo, so any of paths
+1-4 still requires you to obtain a legitimate copy. Paths 2-4 work with
+an existing RA2 install; path 1 mirrors upstream's distributable archive.
 
-The CDN base url is configurable in `apps/web/public/config.ini`
-(`gameresBaseUrl=`, `gameResArchiveUrl=`); point those at any 7z host
-serving a compatible bundle to make auto-import work in your environment.
+To use a different mirror or your own bundle, edit `gameResArchiveUrl`
+in `apps/web/public/config.ini` (relative paths resolve against
+`apps/web/public/`). Other CDN bases are configured the same way:
+`gameresBaseUrl=`, `mapsBaseUrl=`, `modsBaseUrl=`.
 
 ### Build-time gates
 

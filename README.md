@@ -65,6 +65,14 @@ pnpm dev
 http://127.0.0.1:4000
 ```
 
+启动后第一屏是导入游戏资源对话框。**点此自动导入**需要本地有 `full-pack.7z`——上游 `download.ra2web.com` 没发 CORS 头，浏览器跨源 fetch 直接被拦。先运行一次：
+
+```bash
+pnpm fetch:gamepack    # 服务端下载 140 MB 上游 7z 到 apps/web/public/cdn/（绕过 CORS）
+```
+
+之后**点此自动导入**会从同源 `/cdn/full-pack.7z` 拉取，正常解压。如果你已经有原版 RA2 安装，跳过这一步直接用 **选择文件夹...** 也行。详见 `docs/notes.md`。
+
 生产构建与预览：
 
 ```bash

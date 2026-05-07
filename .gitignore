@@ -68,6 +68,7 @@ apps/web/dist/
 .rts2_cache_umd/
 
 public/cdn/
+apps/web/public/cdn/
 .artifacts/
 # scripts/  -- restored 2026-05-07; was upstream-only-local. See docs/notes.md.
 
