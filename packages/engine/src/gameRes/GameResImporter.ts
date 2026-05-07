@@ -396,7 +396,10 @@ export class GameResImporter {
             if (!buffer) continue;
             onProgress(S.get("ts:import_importing", mixName));
             const virtualFile = VirtualFile.fromBytes(new Uint8Array(buffer), mixName);
-            await this.importMixArchive(virtualFile, targetRfsRootDir, onProgress, S);
+            // Auto-import path: trust the deploy to ship pre-baked menuvideo.webm
+            // / music/*.mp3, so we don't pull 16 MB of FFmpeg WASM into the
+            // browser just to redo the same conversions.
+            await this.importMixArchive(virtualFile, targetRfsRootDir, onProgress, S, { skipFFmpegSteps: true });
         }
         // Phase 2: every other manifest entry — campaign .mmx, taunts/, INIs,
         // misc data files. These don't need any extraction; write them at the
@@ -446,9 +449,10 @@ export class GameResImporter {
         const fileName = filePath.slice(filePath.lastIndexOf('/') + 1);
         return VirtualFile.fromBytes(fileData, fileName);
     }
-    private async importMixArchive(mixVirtualFile: VirtualFile, targetRfsRootDir: RealFileSystemDir, onProgress: ImportProgressCallback, S: Strings): Promise<void> {
+    private async importMixArchive(mixVirtualFile: VirtualFile, targetRfsRootDir: RealFileSystemDir, onProgress: ImportProgressCallback, S: Strings, options: { skipFFmpegSteps?: boolean } = {}): Promise<void> {
         const mixFileNameLower = mixVirtualFile.filename.toLowerCase();
         const isThemeMix = !!mixFileNameLower.match(/^theme[^.]*\.mix$/);
+        const { skipFFmpegSteps = false } = options;
         if (mixVirtualFile.getSize() === 0) {
             if (isThemeMix) {
                 console.warn(`Mix file ${mixVirtualFile.filename} is empty. Skipping theme import.`);
@@ -460,13 +464,22 @@ export class GameResImporter {
             await targetRfsRootDir.writeFile(mixVirtualFile, mixFileNameLower);
         }
         if (isThemeMix) {
+            if (skipFFmpegSteps) {
+                console.info(`[GameResImporter] Pre-baked music expected; skipping in-browser ${mixFileNameLower} → mp3 conversion.`);
+                return;
+            }
             const musicDirName = Engine.rfsSettings.musicDir;
             const targetMusicDir = await targetRfsRootDir.getOrCreateDirectory(musicDirName, true);
             await this.importMusic(mixVirtualFile, targetMusicDir, (percent) => onProgress(S.get("ts:import_importing_pg", mixFileNameLower, percent.toFixed(0))));
         }
         else if (mixFileNameLower.match(/language\.mix$/)) {
-            onProgress(S.get("ts:import_importing_long", mixFileNameLower));
-            await this.importVideo(mixVirtualFile, targetRfsRootDir);
+            if (skipFFmpegSteps) {
+                console.info(`[GameResImporter] Pre-baked menu video expected; skipping in-browser Bink → WebM.`);
+            }
+            else {
+                onProgress(S.get("ts:import_importing_long", mixFileNameLower));
+                await this.importVideo(mixVirtualFile, targetRfsRootDir);
+            }
         }
         else if (mixFileNameLower.match(/ra2\.mix$/)) {
             const splashImageBlob = await this.importSplashImage(mixVirtualFile, targetRfsRootDir);

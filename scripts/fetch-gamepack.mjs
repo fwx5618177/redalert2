@@ -294,6 +294,22 @@ async function main() {
     console.log('[fetch-gamepack] verifying required files');
     verifyRequired();
 
+    // Bake media (Bink → WebM, WAV → MP3) offline so the browser auto-import
+    // path doesn't have to download 16 MB of FFmpeg WASM and burn ~25 s on
+    // first launch. Runs in tsx because it imports the workspace MixFile
+    // parser to avoid duplicating mix-format logic in two places.
+    const bakeScript = path.join(repoRoot, 'scripts/bake-media.mts');
+    if (fs.existsSync(bakeScript)) {
+        console.log('[fetch-gamepack] baking media (offline ffmpeg)…');
+        const bakeResult = spawnSync('pnpm', ['exec', 'tsx', bakeScript], {
+            cwd: repoRoot,
+            stdio: ['ignore', 'inherit', 'inherit'],
+        });
+        if (bakeResult.status !== 0) {
+            throw new Error(`bake-media exited with status ${bakeResult.status}`);
+        }
+    }
+
     writeManifest();
 
     if (fs.existsSync(archivePath)) {
