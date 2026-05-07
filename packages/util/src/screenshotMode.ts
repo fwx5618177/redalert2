@@ -8,11 +8,19 @@
  * Playwright's `page.screenshot()` does NOT need this flag (uses CDP
  * Page.captureScreenshot, which reads via a different path).
  */
-export const SCREENSHOT_MODE: boolean = (() => {
-    if (typeof window === 'undefined') return false;
+
+/**
+ * Pure: whether a given URL search string activates screenshot mode.
+ * Exposed (rather than only the constant below) so unit tests can pin
+ * the flag-detection behavior without juggling global state.
+ */
+export function isScreenshotMode(search: string): boolean {
     try {
-        return new URLSearchParams(window.location.search).has('screenshot');
+        return new URLSearchParams(search).has('screenshot');
     } catch {
         return false;
     }
-})();
+}
+
+export const SCREENSHOT_MODE: boolean =
+    typeof window === 'undefined' ? false : isScreenshotMode(window.location.search);
