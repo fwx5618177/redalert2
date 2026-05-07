@@ -1,12 +1,18 @@
 # Project notes
 
-Single source of truth for engineering context that doesn't fit in the README:
-monorepo migration history, debug-script architecture, type-debt cleanup,
-bundle strategy, and a feature-parity tracker.
+Engineering reference for things that don't fit in the README. Active
+documentation up top; historical context near the bottom.
+
+- [Layout](#layout) — package map + dependency direction
+- [Commands](#commands) — full script cheat sheet (extends the README)
+- [Debug scripts](#debug-scripts) — Playwright regression flows + how to add one
+- [Bundle strategy](#bundle-strategy) — chunk split, three.js dedupe, baseline gate
+- [Build alignment tracker](#build-alignment-tracker) — **living** parity status; update with each PR that moves a row
+- [Backstory](#backstory) — monorepo migration + type-debt cleanup (frozen 2026-05-07)
 
 ---
 
-## 1. Layout
+## Layout
 
 pnpm workspace; one app + seven workspace packages.
 
@@ -24,72 +30,69 @@ redalert2/
 │   ├── network/   (@ra2/network) LAN, lockstep, replay, IRC, Ladder
 │   ├── gui/       (@ra2/gui)     screens, HUD, options, ErrorHandler
 │   └── tools/     (@ra2/tools)   in-game testers (vxltest, soundtest, ...)
-├── scripts/                     Playwright regression flows + dev runtime
+├── scripts/                     Playwright regression flows + dev runtime + CI gates
 └── docs/                        this file
 ```
 
-Allowed dependency direction (enforced by `pnpm lint` / boundaries):
+Allowed dependency direction (enforced by `pnpm lint` / `eslint-plugin-boundaries`):
 
 ```
 util ← data ← engine ← game ← {network, gui} ← tools ← apps/web
 ```
 
----
-
-## 2. Migration history (2026-05-07)
-
-The repo started as a single `src/` tree. It was migrated to a monorepo in
-one sitting; the cycle-breaking moves below are the ones that mattered.
-
-**Files moved into `@ra2/util`** (because the original `src/util/QuadTree.ts`
-imported `@/game/math/Box2` — a `util → game` cycle):
-- `src/game/math/*` → `packages/util/src/math/`
-- `src/game/Coords.ts` → `packages/util/src/Coords.ts`
-- `src/{LocalPrefs,RouteHelper,ConsoleVars,version}.ts` → `packages/util/src/`
-- `src/tools/DevToolsApi.ts` → `packages/util/src/`
-- `src/performance/` → `packages/util/src/performance/`
-
-**Files moved into `@ra2/game`** (because they statically imported game
-state from inside `@ra2/engine` — an `engine → game` cycle):
-- `src/engine/RenderableManager.ts`
-- `src/engine/renderable/fx/handler/*.ts`
-- `src/engine/renderable/fx/LineTrailFx.ts`
-
-**Files moved into `@ra2/data`** (because gui+engine both imported `Config`
-from the app shell):
-- `src/Config.ts` → `packages/data/src/Config.ts`
-
-**Files moved into `@ra2/gui`** (used by gui only; was app-shell):
-- `src/ErrorHandler.ts` → `packages/gui/src/ErrorHandler.ts`
-
-**Files moved into `@ra2/engine`**:
-- `src/setupThreeGlobal.ts` → `packages/engine/src/setupThreeGlobal.ts`
-  (pure `THREE` compat shim; engine's `speRuntime.ts` is the real consumer)
-
-After moves the dependency graph is acyclic and lint-enforced.
-
-### Recovered upstream-stripped files
-
-`packages/network/src/{WolConfig,WolError,qmCodes}.ts` were referenced by
-gui screens but absent from the upstream `huangkaoya/redalert2` tree
-(`scripts/` and `docs/` are also `.gitignore`'d there). They have been
-**reverse-engineered into typecheck-only stubs** — see the file headers
-for what the symbols mean and why their values are placeholder. Real
-protocol values must come from a live WOL/CnCNet server if the project
-ever reconnects; in local dev the screens that depend on them never
-reach the network.
+Within a package: relative imports. Across packages: `@ra2/<pkg>/<file>`.
 
 ---
 
-## 3. Debug scripts
+## Commands
 
-Playwright-driven regression flows under `scripts/`. Each script auto-spawns
-the Vite dev server on `127.0.0.1:4000` (or reuses an existing one), captures
-console + network errors, and writes artifacts to `.artifacts/<flow-name>/`.
+The README covers the daily commands (`pnpm dev/build/test/lint/typecheck`).
+The full set including CI gates and conditional features:
 
 | Command | Purpose |
 | --- | --- |
-| `pnpm debug:test-entries` | Iterates all 13 hash routes registered in `Application.initRouting()` (`apps/web/src/Application.ts`). Reports honestly when GameRes blocks routing. |
+| `pnpm typecheck` | Full project `tsc --noEmit`; surfaces every error. |
+| `pnpm typecheck:baseline` | Compares against `.typecheck-baseline.json#maxErrors`. **CI gate**. |
+| `pnpm typecheck:entry` | Quick sanity check on `main.tsx + App.tsx` only. |
+| `pnpm bundle:baseline` | `pnpm build` + per-chunk size check vs `.bundle-baseline.json`. **CI gate**. |
+| `pnpm lint` | ESLint with boundaries plugin (cross-package dep direction). **CI gate**. |
+| `pnpm test` | vitest run (34 tests across 7 files). |
+| `pnpm test:watch` | vitest in watch mode. |
+| `pnpm debug:<flow>` | One Playwright regression flow — see next section. |
+| `pnpm live:runtime[:build]` | Long-running dev server + Playwright window for interactive poking. |
+
+Both baselines are deliberately manual: when you fix errors / shrink chunks,
+`pnpm typecheck:baseline` and `pnpm bundle:baseline` print suggested new
+caps but never auto-update. Edit `.typecheck-baseline.json#maxErrors` or
+`.bundle-baseline.json#chunks.<name>.maxBytes` by hand and commit.
+
+### URL flags
+
+- `?screenshot` — turn on WebGL `preserveDrawingBuffer` (per-frame GPU→CPU
+  readback). Off by default; only useful when client-side code needs to
+  call `canvas.toDataURL()`. Playwright's `page.screenshot()` doesn't need
+  this — it uses CDP's separate path.
+- `?test=glsl` — alternate test mode (legacy, see `App.tsx`).
+- `?mod=<name>` — load a mod by name (passed through to GameRes).
+
+### Build-time gates
+
+`import.meta.env.DEV` controls roughly 40 `[Diag]` boot logs in
+`Application.ts` (rules.ini head, merged-rule probes, etc.). Tree-shaken
+from prod builds — verified: dist contains only the 2 real `[Diag]`
+error-on-malformed-data lines from `Rules.ts`.
+
+---
+
+## Debug scripts
+
+Playwright-driven regression flows under `scripts/`. Each script auto-spawns
+the Vite dev server on `127.0.0.1:4000` (or reuses an existing one),
+captures console + network errors, and writes artifacts to `.artifacts/<flow-name>/`.
+
+| Command | Purpose |
+| --- | --- |
+| `pnpm debug:test-entries` | Iterates all 13 hash routes registered in `Application.initRouting()`. Reports honestly when GameRes blocks routing. |
 | `pnpm debug:tester-panels` | Captures `window.__ra2test` snapshot per tester. |
 | `pnpm debug:viewport` | Runs 6 desktop/mobile resolutions; records `#ra2web-root` style/dataset. |
 | `pnpm debug:options` | Toggles a primitive in `__ra2debug.generalOptions`, reloads, verifies persistence to `_r_opts_v3` localStorage key. |
@@ -104,17 +107,18 @@ console + network errors, and writes artifacts to `.artifacts/<flow-name>/`.
 ```
 scripts/
 ├── lib/
-│   ├── config.mjs       constants + tester route table
-│   ├── devServer.mjs    spawn-or-reuse vite (via `pnpm --filter @ra2/web dev`)
-│   └── runtime.mjs      runFlow() wrapper + helpers
-├── *-flow.mjs           one file per debug:* command
+│   ├── config.mjs              constants + tester route table
+│   ├── devServer.mjs           spawn-or-reuse vite (via `pnpm --filter @ra2/web dev`)
+│   └── runtime.mjs             runFlow() wrapper + helpers
+├── *-flow.mjs                  one file per debug:* command
 ├── live-interaction-runtime.mjs
-└── check-typecheck-baseline.mjs   CI gate (see §5)
+├── check-typecheck-baseline.mjs   CI gate
+└── check-bundle-baseline.mjs      CI gate
 ```
 
 `runFlow` launches Chromium with `ignoreHTTPSErrors: true` (the dev server
-self-signs via `@vitejs/plugin-basic-ssl`), captures console + pageerror +
-requestfailed, writes `result.json` per flow. Helpers exposed:
+self-signs via `@vitejs/plugin-basic-ssl`), captures console + pageerror
++ requestfailed, writes `result.json` per flow. Helpers:
 `waitForDebugRoot`, `waitForMainMenu`, `snapshotRuntime`, `navigateHash`.
 
 `devServer.mjs` registers a process reaper so vite is killed even when the
@@ -136,8 +140,7 @@ runFlow('my-flow', async (ctx) => {
 });
 ```
 
-Then add `"debug:my-flow": "node scripts/my-flow-flow.mjs"` to root
-`package.json#scripts`.
+Then add `"debug:my-flow": "node scripts/my-flow-flow.mjs"` to root `package.json#scripts`.
 
 ### Env vars
 
@@ -148,9 +151,8 @@ Then add `"debug:my-flow": "node scripts/my-flow-flow.mjs"` to root
 ### Scripts NOT being restored
 
 Upstream's `package.json` referenced ~30 debug scripts. After review, the
-remaining ~20 were judged low value for a fan-port project of this scope
-(most need real game assets, golden screenshots, or duplicate what unit
-tests would do better) and **will not be ported back**:
+remaining ~20 were judged low value (most need real game assets or duplicate
+what unit tests cover better) and **will not be ported back**:
 
 ```
 debug:skirmish              debug:perf-smoke           debug:perftest
@@ -163,66 +165,175 @@ debug:lan-lockstep          debug:lan-match-session    debug:lan-map-transfer
 ```
 
 If a future change needs regression coverage in one of these areas, write
-the targeted script then. The scaffold supports adding a new flow in ~30 lines.
+the targeted script then. Scaffold supports adding a flow in ~30 lines.
 
 ---
 
-## 4. Type debt: 222 → 0
+## Bundle strategy
+
+`apps/web/vite.config.ts` adds `build.rollupOptions.output.manualChunks`
+for named, stable vendor chunks so browser cache survives across app-only
+deploys (sizes from 2026-05-07 measurement; current values via
+`pnpm bundle:baseline`):
+
+| Chunk | Size | Cap | Contents |
+| --- | ---: | ---: | --- |
+| `vendor-three` | 728 KB | 800 KB | three + three.meshline (rarely changes) |
+| `vendor-react` | 190 KB | 215 KB | react + react-dom + scheduler |
+| `vendor-qr` | 154 KB | 170 KB | qrcode + jsqr (LAN code path) |
+| `vendor-7z` | 55 KB | 65 KB | 7z-wasm |
+| `vendor-ffmpeg` | 3 KB | 8 KB | ffmpeg.wasm shim |
+| `index` | 591 KB | 620 KB | apps/web entry + eager `Application`/`Gui` boot |
+| ~160 other chunks | small | — | Vite-default per-file splits of `@ra2/*` source |
+| **total assets** | **5.2 MB** | **9.5 MB** | |
+
+Workspace packages (`@ra2/*`) are deliberately NOT manualChunked — Vite's
+per-file lazy splitting (`VxlBuilderFactory`, `Box2`, `Engine`,
+`AutoRepairTrait` each their own chunk) is finer-grained than any
+hand-rolled grouping.
+
+### Three.js single-instance
+
+Three ways together — drop any one and the `THREE.WARNING: Multiple
+instances of Three.js` console warning fires:
+
+1. `peerDependencies: { three }` in 6 workspace package.jsons (only
+   `apps/web` declares it as a real `dependencies`).
+2. `pnpm.overrides: { three: '0.183.2' }` at root (overrides
+   `shader-particle-engine`'s pinned `^0.84.0` transitive dep).
+3. `resolve.alias.three = require.resolve('three')` in vite.config (forces
+   every import to the same absolute file path so Vite's module graph
+   collapses to one instance).
+
+### Bundle baseline gate
+
+`scripts/check-bundle-baseline.mjs` measures every prod chunk against caps
+in `.bundle-baseline.json` and fails CI if any tracked chunk exceeds its
+`maxBytes`. Mirrors typecheck-baseline pattern: tighten or loosen via
+deliberate edits, never auto-update.
+
+`apps/web/dist/stats.html` (rollup-plugin-visualizer treemap, ~880 KB)
+is the source of truth for what's in each chunk; CI uploads it as a
+7-day artifact.
+
+Vite filename-hash quirk: hashes use base64url alphabet (incl. `-`),
+so `vendor-three-BPXSdpBv.js` would naively strip down to `vendor`.
+The check script anchors strictly to `-{8 chars}\.<ext>$`.
+
+---
+
+## Build alignment tracker
+
+Living tracker of how closely the TypeScript reimplementation matches
+original Red Alert 2 / Yuri's Revenge behavior. **Update in the same PR
+that lands the change.** Status legend:
+
+> ✅ aligned · 🟡 partial · 🔴 broken · ⚪️ untested
+
+### Engine bootstrap
+
+| Area | Status | Owner | Notes |
+| --- | --- | --- | --- |
+| App startup → splash → translations → GameRes init | 🟡 | `apps/web/src/Application.ts` | Reaches splash; downstream depends on game files. Smoke covered by `debug:game-res-init`. |
+| Hash routing for tester entries | ✅ | `apps/web/src/Application.ts` | All 13 routes reachable; covered by `debug:test-entries`. |
+| Viewport / fullscreen / mobile layout | 🟡 | `apps/web/src/Application.ts` | Desktop & mobile path both present; covered by `debug:viewport`. Fullscreen API only smoke-tested. |
+| GeneralOptions persistence (localStorage `_r_opts_v3`) | ✅ | `packages/gui/src/screen/options/GeneralOptions.ts` | Toggle + reload covered by `debug:options`. Unit-tested. |
+| StorageFileExplorer (file import) | ⚪️ | `packages/gui/src/component/fileExplorer/StorageFileExplorer.tsx` | UI loads; manual import flow not auto-tested (requires File System Access prompt). |
+
+### Resource pipeline
+
+| Area | Status | Owner | Notes |
+| --- | --- | --- | --- |
+| MIX archive parsing | 🟡 | `packages/data/src/MixFile.ts` | CRC32 self-test green at startup (see `apps/web/src/main.tsx`). |
+| VFS layered file lookup | 🟡 | `packages/data/src/vfs/VirtualFileSystem.ts` | `[Diag]` logs in Application enumerate ownership. |
+| INI merge (rules + rulescd, art + artcd) | 🟡 | `packages/engine/src/Engine.ts` | First 120 sections diagnostic-dumped (DEV only). |
+| CSF + JSON locale merge | 🟡 | `packages/data/src/CsfFile.ts` + Application | Sample keys logged on boot. |
+| ModMeta INI parse | ✅ | `packages/gui/src/screen/mainMenu/modSel/ModMeta.ts` | 11 unit tests cover required/optional fields, errors, clone. |
+
+### Game logic
+
+| Area | Status | Owner | Notes |
+| --- | --- | --- | --- |
+| Skirmish lobby form (slots, colors, start positions) | 🟡 | `packages/gui/src/screen/mainMenu/lobby/SkirmishScreen.ts` | Snapshot captured by `debug:skirmish-lobby-data`. |
+| GameTurnManager / lockstep | ⚪️ | `packages/game/src/GameTurnManager.ts` | No automated coverage yet. |
+| Veteran XP, spy infiltration, psychic sensor, iron curtain | 🟡 | `packages/game/src/trait/` | Behavior fixes shipped in `924e97c`. |
+| Bot sandbox (third-party AI) | 🟡 | `packages/game/src/ai/thirdpartbot/` | Type-strip regex bug fixed in `d4029e3`. |
+| Replay timestamp overflow | ✅ | `packages/network/src/gamestate/replay/` | Fixed in `81c90b4`. |
+
+### Renderer
+
+| Area | Status | Owner | Notes |
+| --- | --- | --- | --- |
+| three.js scene graph + multi-scene viewport render | ✅ | `packages/engine/src/gfx/Renderer.ts` | Single instance (peerDeps + override + alias). `preserveDrawingBuffer` is now `?screenshot` opt-in; off in prod. |
+| Octree culling | 🟡 | `packages/engine/src/gfx/OctreeContainer.ts` | Active in renderable container. |
+| Vxl geometry builder | ✅ | `packages/engine/src/renderable/builder/vxlGeometry/` | Pre-existing `3 * t` typo bug fixed during type-debt sweep. |
+| Shadows | ⚪️ | n/a | `shadowMap.enabled = true` set; no comparison test. |
+
+---
+
+## Backstory
+
+Frozen 2026-05-07. Reference for new contributors who want context;
+not part of daily workflow.
+
+### Monorepo migration
+
+The repo started as a single `src/` tree. Migrated to a pnpm workspace
+in one sitting. Cycle-breaking moves (each was a `git mv` then a codemod
+pass over import paths):
+
+- **`@ra2/util` ←** `src/game/math/*`, `src/game/Coords.ts`,
+  `src/{LocalPrefs,RouteHelper,ConsoleVars,version}.ts`,
+  `src/tools/DevToolsApi.ts`, `src/performance/`
+  (broke the `util → game` cycle via `QuadTree`)
+- **`@ra2/game` ←** `src/engine/RenderableManager.ts`,
+  `src/engine/renderable/fx/handler/*.ts`,
+  `src/engine/renderable/fx/LineTrailFx.ts`
+  (broke the `engine → game` cycle)
+- **`@ra2/data` ←** `src/Config.ts` (gui + engine both needed it)
+- **`@ra2/gui` ←** `src/ErrorHandler.ts`
+- **`@ra2/engine` ←** `src/setupThreeGlobal.ts` (engine's `speRuntime.ts`
+  is the real consumer)
+
+Acyclic graph after these moves; lint-enforced going forward.
+
+#### Recovered upstream-stripped files
+
+`packages/network/src/{WolConfig,WolError,qmCodes}.ts` were referenced
+by gui screens but absent from the upstream `huangkaoya/redalert2` tree
+(`scripts/` and `docs/` are also `.gitignore`'d there). They were
+**reverse-engineered into typecheck-only stubs** — see file headers for
+what each symbol means. Real protocol values must come from a live
+WOL/CnCNet server if the project ever reconnects; in local dev the
+screens that depend on them never reach the network.
+
+### Type-debt cleanup: 222 → 0
 
 The first run of full `pnpm typecheck` (post-migration) surfaced 222
 pre-existing errors that the original `tsconfig.build.json` had hidden
-by only checking `main.tsx + App.tsx`. After investigation, all 222 were
-closed in three buckets.
+by only checking `main.tsx + App.tsx`. All 222 closed in three buckets:
 
-### Real fixes (47 errors — including one runtime bug)
+- **47 real fixes** — engine/material/builder type tightening,
+  `BoxBufferGeometry → BoxGeometry` rename (which itself surfaced a
+  real runtime bug in `VxlGeometryCulledBuilder` where `3 * t` was
+  multiplying by a `BoxGeometry` instance), `ModMeta.ts` structural
+  reconstruct (a misplaced `}` had truncated the class), missing private
+  field declarations in `ParasiteSparkFxHandler`/`TriggerActionFxHandler`,
+  `subscribe(handler)` → `subscribe(EventType.X, handler)`, missing 18th
+  `Hud` constructor arg in `ShpTester`, `THREE.MathUtils.generateUUID()`
+  → `THREE.Math.generateUUID()` to match the legacy-shim type, named
+  re-export of `ChannelUser` for default+named-import consumers.
+- **4 `@ts-expect-error`** for intentional private access in dev-only
+  testers (`UnitMovementTester`, `InfantryTester`).
+- **171 `@ts-nocheck`** on online-only or upstream-stripped screens
+  (table below). Each banner cites the specific stripped API.
 
-- **`packages/engine/src/renderable/builder/vxlGeometry/VxlGeometryCulledBuilder.ts:43-45`**
-  fixed a real pre-existing typo bug (`3 * t` where `t` was a `BoxGeometry`
-  instance, should be `T` the vertex counter; produced NaN-sized
-  Float32Arrays at runtime). Surfaced only by the `BoxBufferGeometry → BoxGeometry`
-  rename — old @types/three was loose enough to let `3 * <object>` slip.
-- **`packages/engine/src/renderable/entity/IsoCoords.ts:103`** — narrowed
-  `screenDistanceToWorld` return type from `number` to `{x,y}` to match Coords.
-- **`packages/engine/src/gfx/material/PaletteLambertMaterial.ts:44`** — typed
-  destructure default for `palette/paletteCount/paletteOffset/extraLight`.
-- **`@types/three` rename** — `BoxBufferGeometry → BoxGeometry` in 2 builders.
-- **`packages/engine/src/renderable/builder/vxlGeometry/VxlGeometryNaiveBuilder.ts:8`**
-  — narrowed `boxGeometry.getAttribute('normal').array` to `Float32Array`.
-- **`packages/gui/src/screen/mainMenu/modSel/ModMeta.ts`** — reconstructed
-  file structure (22 errors from a misplaced `}` truncating the class early).
-- **`packages/game/src/renderable/fx/handler/{ParasiteSpark,TriggerAction}FxHandler.ts`**
-  — declared missing private fields `handleObjectDamaged`/`handleEvent`
-  (assigned in constructor but never declared); also fixed
-  `subscribe(handler)` → `subscribe(EventType.X, handler)`.
-- **`packages/tools/src/{Aircraft,Vehicle}Tester.ts:134`** —
-  `new Lighting().mapLighting → new Lighting()` (pre-existing real bug).
-- **`packages/tools/src/ShpTester.ts:209`** — added missing 18th `Hud`
-  constructor arg (`persistentHoverTags`).
-- **`packages/gui/src/replay/ReplayStorageMigration.ts:85`** —
-  `THREE.MathUtils.generateUUID()` → `THREE.Math.generateUUID()` to match
-  the legacy-shim `declare const THREE` shape.
-- **`packages/gui/src/screen/mainMenu/ladderRules/LadderRulesScreen.ts:6`**
-  — added `declare` keyword for property override.
-- **`packages/gui/src/component/ChannelUser.tsx`** — added named re-export
-  so consumers using `import { ChannelUser }` resolve.
-- **Misc**: `tsconfig.base.json` `noFallthroughCasesInSwitch: false` (tsc has
-  no `// falls through` escape; eslint can re-add this rule later).
+#### `@ts-nocheck` files (171 errors, 14 files)
 
-### `@ts-expect-error` on intentional private access (4 errors)
-
-- `packages/tools/src/UnitMovementTester.ts` ×3 — toggling
-  `PointerEvents.intersectionsEnabled` during drag (private; pre-existing
-  tester pattern).
-- `packages/tools/src/InfantryTester.ts:137` — `Player.color = ...` for
-  transient setup.
-
-### `@ts-nocheck` on online-only or upstream-stripped screens (171 errors, 14 files)
-
-Each of these depends on stripped network-class methods that the
-upstream-published source never shipped (matches the `WolConfig`/`WolError`/
-`qmCodes` pattern). The screens cannot reach a server in local dev anyway;
-faking 30+ method stubs would silently lie about runtime behavior, so we
-mark the files instead. Each file's banner cites the specific stripped API.
+Each depends on stripped network-class methods that the upstream-published
+source never shipped (matches the `WolConfig`/`WolError`/`qmCodes`
+pattern). Cannot reach a server in local dev anyway; faking 30+ method
+stubs would silently lie about runtime behavior.
 
 | File | Errors | Stripped |
 | --- | ---: | --- |
@@ -242,111 +353,21 @@ mark the files instead. Each file's banner cites the specific stripped API.
 | `gui/screen/mainMenu/customGame/component/GameBrowser.tsx` | 3 | Online game browser |
 | Other 1-2 error files | ~20 | Misc upstream stripping |
 
-CI baseline is `maxErrors: 0` — any new typecheck error fails CI. To lower
-it after fixing nocheck files, run `pnpm typecheck:baseline`, see the
-suggestion to lower, and edit `.typecheck-baseline.json#maxErrors` manually.
+To rescue any of these, write proper runtime stubs (not just type) that
+match the real WOL/IRC server protocol, then remove the `@ts-nocheck`
+banner. CI will keep the file at 0 errors after that.
 
----
+### Dev experience improvements (same session)
 
-## 5. Bundle strategy
+Beyond the migration itself:
 
-`apps/web/vite.config.ts` adds `build.rollupOptions.output.manualChunks` for
-named, stable vendor chunks so browser cache survives across app-only deploys:
-
-| Chunk | Size | Contents |
-| --- | ---: | --- |
-| `vendor-three` | 728 KB | three + three.meshline (rarely changes) |
-| `vendor-react` | 190 KB | react + react-dom + scheduler |
-| `vendor-qr` | 154 KB | qrcode + jsqr (LAN code path) |
-| `vendor-7z` | 54 KB | 7z-wasm |
-| `vendor-ffmpeg` | 3 KB | ffmpeg.wasm shim |
-| `index` | 575 KB | apps/web entry + eager Application/Gui boot |
-| ~160 other chunks | small | Vite-default per-file splits of `@ra2/*` source |
-
-Workspace packages (`@ra2/*`) are deliberately NOT manualChunked — Vite's
-per-file lazy splitting (`VxlBuilderFactory`, `Box2`, `Engine`,
-`AutoRepairTrait` each their own chunk) is finer-grained than any
-hand-rolled grouping.
-
-`MainMenuRootScreen.ts` previously had 14 redundant `await import('@ra2/...')`
-calls inside per-screen-type branches; Vite reported them as
-`INEFFECTIVE_DYNAMIC_IMPORT` because `Gui.ts` already statically imports
-the same modules. Hoisted to top-of-file static imports — 0 build warnings.
-
-Single-instance `three` is enforced three ways:
-1. `peerDependencies: { three }` in 6 workspace package.jsons (only `apps/web`
-   declares it as a real `dependencies`).
-2. `pnpm.overrides: { three: '0.183.2' }` at root (overrides
-   `shader-particle-engine`'s pinned `^0.84.0` transitive dep).
-3. `resolve.alias.three = require.resolve('three')` in vite.config (forces
-   every import to the same absolute file path so Vite's module graph
-   collapses to one instance).
-
-Without all three, the `THREE.WARNING: Multiple instances of Three.js`
-console warning fires.
-
-### Bundle regression gate (`.bundle-baseline.json`)
-
-`scripts/check-bundle-baseline.mjs` measures every prod chunk against caps
-in `.bundle-baseline.json` and fails CI if any tracked chunk exceeds its
-`maxBytes`. Mirrors the typecheck-baseline pattern: tighten or loosen via
-deliberate edits, not auto-update. `apps/web/dist/stats.html`
-(rollup-plugin-visualizer treemap) is the source of truth for what's in
-each chunk; CI uploads it as an artifact.
-
-### Conditional rendering features
-
-- `?screenshot` URL flag toggles WebGL `preserveDrawingBuffer` on (per-frame
-  GPU→CPU readback, ~5-10% frame budget). Off by default. Playwright's
-  `page.screenshot()` does NOT need this — it uses CDP's separate path.
-- Diagnostic boot logs (~40 `[Diag]` console calls in Application.ts that
-  dump rules.ini head, merged-rules CDEST/Warhead/APSplash probes, etc.)
-  are gated on `import.meta.env.DEV` and tree-shaken from prod builds.
-
----
-
-## 6. Build alignment tracker
-
-Living tracker of how closely the TypeScript reimplementation matches
-original Red Alert 2 / Yuri's Revenge behavior. Update in the same PR
-that lands the change. Status legend:
-
-> ✅ aligned · 🟡 partial · 🔴 broken · ⚪️ untested
-
-### Engine bootstrap
-
-| Area | Status | Owner | Notes |
-| --- | --- | --- | --- |
-| App startup → splash → translations → GameRes init | 🟡 | `apps/web/src/Application.ts` | Reaches splash; downstream depends on game files. Smoke covered by `debug:game-res-init`. |
-| Hash routing for tester entries | ✅ | `apps/web/src/Application.ts` | All 13 routes reachable; covered by `debug:test-entries`. |
-| Viewport / fullscreen / mobile layout | 🟡 | `apps/web/src/Application.ts` | Desktop & mobile path both present; covered by `debug:viewport`. Fullscreen API only smoke-tested. |
-| GeneralOptions persistence (localStorage `_r_opts_v3`) | ✅ | `packages/gui/src/screen/options/GeneralOptions.ts` | Toggle + reload covered by `debug:options`. |
-| StorageFileExplorer (file import) | ⚪️ | `packages/gui/src/component/fileExplorer/StorageFileExplorer.tsx` | UI loads; manual import flow not auto-tested (requires File System Access prompt). |
-
-### Resource pipeline
-
-| Area | Status | Owner | Notes |
-| --- | --- | --- | --- |
-| MIX archive parsing | 🟡 | `packages/data/src/MixFile.ts` | CRC32 self-test green at startup (see `apps/web/src/main.tsx`). |
-| VFS layered file lookup | 🟡 | `packages/data/src/vfs/VirtualFileSystem.ts` | `[Diag]` logs in Application enumerate ownership. |
-| INI merge (rules + rulescd, art + artcd) | 🟡 | `packages/engine/src/Engine.ts` | First 120 sections diagnostic-dumped. |
-| CSF + JSON locale merge | 🟡 | `packages/data/src/CsfFile.ts` + Application | Sample keys logged on boot. |
-
-### Game logic
-
-| Area | Status | Owner | Notes |
-| --- | --- | --- | --- |
-| Skirmish lobby form (slots, colors, start positions) | 🟡 | `packages/gui/src/screen/mainMenu/lobby/SkirmishScreen.ts` | Snapshot captured by `debug:skirmish-lobby-data`. |
-| GameTurnManager / lockstep | ⚪️ | `packages/game/src/GameTurnManager.ts` | No automated coverage yet. |
-| Veteran XP, spy infiltration, psychic sensor, iron curtain | 🟡 | `packages/game/src/trait/` | Behavior fixes shipped in `924e97c`. |
-| Bot sandbox (third-party AI) | 🟡 | `packages/game/src/ai/thirdpartbot/` | Type-strip regex bug fixed in `d4029e3`. |
-| Replay timestamp overflow | ✅ | `packages/network/src/gamestate/replay/` | Fixed in `81c90b4`. |
-
-### Renderer
-
-| Area | Status | Owner | Notes |
-| --- | --- | --- | --- |
-| three.js scene graph + multi-scene viewport render | 🟡 | `packages/engine/src/gfx/Renderer.ts` | `preserveDrawingBuffer: true` always on; consider gating to tester mode. |
-| Octree culling | 🟡 | `packages/engine/src/gfx/OctreeContainer.ts` | Active in renderable container. |
-| Vxl geometry builder | ✅ | `packages/engine/src/renderable/builder/vxlGeometry/` | Pre-existing `3 * t` typo bug fixed during type-debt sweep. |
-| Shadows | ⚪️ | n/a | `shadowMap.enabled = true` set; no comparison test. |
+- `[Diag]` boot logs (~40 in `Application.ts`) gated on `import.meta.env.DEV`
+  — tree-shaken from prod builds.
+- `preserveDrawingBuffer` was unconditionally on (per-frame GPU→CPU
+  readback). Made opt-in via `?screenshot` URL flag (`SCREENSHOT_MODE`
+  in `packages/util/src/screenshotMode.ts`).
+- 14 `INEFFECTIVE_DYNAMIC_IMPORT` warnings eliminated by hoisting
+  `MainMenuRootScreen.ts`'s redundant `await import('@ra2/...')` calls
+  to top-of-file static imports (Gui.ts already pulled them eagerly).
+- 27 unit tests added covering `screenshotMode`, the recovered network
+  stubs, and the reconstructed `ModMeta`. Total 7 → 34 tests.
