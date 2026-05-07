@@ -1002,6 +1002,12 @@ export class Application {
         };
     }
     private async handleGameResLoadError(error: Error, strings: Strings, fatal: boolean = false): Promise<void> {
+        console.error('[Application] handleGameResLoadError', {
+            name: error.name,
+            message: error.message,
+            cause: (error as any).cause,
+            stack: error.stack,
+        });
         let errorMessage = strings.get("ts:import_load_files_failed");
         if (error.name === "ChecksumError") {
             const fileField = (error as any).file || '';
@@ -1041,6 +1047,11 @@ export class Application {
             (wrappedError as any).cause = error;
             this.sentry?.captureException(wrappedError);
         }
+        if (import.meta.env.DEV) {
+            const cause = (error as any).cause;
+            const causeStr = cause ? ` (cause: ${cause.name ?? ''} ${cause.message ?? cause})` : '';
+            errorMessage += `\n\n[dev] ${error.name}: ${error.message}${causeStr}`;
+        }
         if (this.gui && this.gui.getRootController()) {
             try {
                 const messageBoxApi = this.gui.getMessageBoxApi();
@@ -1058,6 +1069,14 @@ export class Application {
         }
     }
     private async handleGameResImportError(error: Error, strings: Strings): Promise<void> {
+        // Always log full error to console so devtools shows the stack +
+        // any nested cause. The user-facing alert can only carry strings.
+        console.error('[Application] handleGameResImportError', {
+            name: error.name,
+            message: error.message,
+            cause: (error as any).cause,
+            stack: error.stack,
+        });
         let errorMessage = strings.get("ts:import_failed");
         if (error.name === "FileNotFoundError") {
             const fileField = (error as any).file || '';
@@ -1116,6 +1135,14 @@ export class Application {
             const wrappedError = new Error("Game res import failed " + (error.message ?? error.name));
             (wrappedError as any).cause = error;
             this.sentry?.captureException(wrappedError);
+        }
+        // Dev-only: append the actual error name + message + cause name to
+        // the alert. Without this, the user sees a generic "无法导入游戏资源。"
+        // and has no idea what went wrong unless they open devtools.
+        if (import.meta.env.DEV) {
+            const cause = (error as any).cause;
+            const causeStr = cause ? ` (cause: ${cause.name ?? ''} ${cause.message ?? cause})` : '';
+            errorMessage += `\n\n[dev] ${error.name}: ${error.message}${causeStr}`;
         }
         if (this.gui && this.gui.getRootController()) {
             try {
