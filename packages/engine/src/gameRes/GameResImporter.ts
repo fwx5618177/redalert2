@@ -37,6 +37,10 @@ interface SevenZipWasmOptions {
     quit?: (code: number, message?: string) => void;
 }
 declare function createSevenZipWasm(options?: SevenZipWasmOptions): Promise<SevenZipWasmModule>;
+interface ManifestFile {
+    version: number;
+    files: { path: string; size: number }[];
+}
 const REQUIRED_MIX_SIZES = new Map<string, number>()
     .set("ra2.mix", 281895456)
     .set("language.mix", 53116040)
@@ -329,27 +333,33 @@ export class GameResImporter {
         onProgress("Game assets successfully imported.");
     }
     /**
-     * Auto-import path: fetch each essential .mix from a CDN base URL
-     * (e.g. /cdn/full-pack/ served by Vite from apps/web/public/) and
-     * run it through the same per-mix pipeline the directory branch uses.
+     * Auto-import path: read manifest.json at a CDN base URL (e.g.
+     * /cdn/full-pack/ served by Vite from apps/web/public/), fetch every
+     * file it lists, and write each into rfs at the right place — the
+     * essential mixes go through the same music/video/splash extraction
+     * pipeline the directory branch uses; everything else (campaign
+     * .mmx archives, taunts/, settings, etc.) lands as a plain write.
      *
      * Lets first-launch users skip the file picker entirely when the
-     * gamepack is bundled with the deploy. Returns void on full success;
-     * throws if any required mix can't be fetched or imported.
+     * gamepack ships with the deploy. Returns void on full success;
+     * throws if a required mix is missing or the manifest is unreadable.
      */
     async importFromCdnDirectory(baseUrl: string, targetRfsRootDir: RealFileSystemDir, onProgress: ImportProgressCallback): Promise<void> {
-        const essentialMixes = ["ra2.mix", "language.mix", "multi.mix", "theme.mix"];
-        const optionalMixes = new Set(["theme.mix"]);
+        const essentialMixes = new Set(["ra2.mix", "language.mix", "multi.mix", "theme.mix"]);
+        const optionalEssentials = new Set(["theme.mix"]);
         const S = this.strings;
         const base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
         onProgress(S.get("ts:import_preparing_for_import"));
-        for (const mixName of essentialMixes) {
-            const target = base + mixName;
-            let buffer: ArrayBuffer;
+        const manifest = await new HttpRequest().fetchJson(base + 'manifest.json') as ManifestFile;
+        if (!manifest || !Array.isArray(manifest.files)) {
+            throw new Error("Invalid manifest.json (missing files array)");
+        }
+        const toMib = (bytes: number) => bytes / 1024 / 1024;
+        const fetchEntry = async (relPath: string, optional: boolean): Promise<ArrayBuffer | undefined> => {
+            const url = base + relPath;
             let downloadedBytes = 0;
-            const toMib = (bytes: number) => bytes / 1024 / 1024;
             try {
-                buffer = await new HttpRequest().fetchBinary(target, undefined, {
+                return await new HttpRequest().fetchBinary(url, undefined, {
                     onProgress: (delta, total) => {
                         downloadedBytes += delta;
                         const text = total
@@ -360,18 +370,60 @@ export class GameResImporter {
                 });
             }
             catch (e: any) {
-                if (optionalMixes.has(mixName)) {
-                    console.warn(`[GameResImporter] Optional mix "${mixName}" not available at ${target}; skipping.`, e);
-                    continue;
+                if (optional) {
+                    console.warn(`[GameResImporter] Optional asset "${relPath}" not fetchable; skipping.`, e);
+                    return undefined;
                 }
                 if (e instanceof DownloadError && e.statusCode === 404) {
-                    throw new GameResFileNotFoundError(mixName);
+                    throw new GameResFileNotFoundError(relPath);
                 }
                 throw e;
             }
+        };
+        // Phase 1: essential mixes (need importMixArchive for music/video/splash).
+        // Pull them from the manifest by name so a wonky listing surfaces here, not later.
+        const manifestPaths = new Set(manifest.files.map((f) => f.path));
+        for (const mixName of ["ra2.mix", "language.mix", "multi.mix", "theme.mix"]) {
+            const isOptional = optionalEssentials.has(mixName);
+            if (!manifestPaths.has(mixName)) {
+                if (isOptional) {
+                    console.warn(`[GameResImporter] Optional mix "${mixName}" not in manifest; skipping.`);
+                    continue;
+                }
+                throw new GameResFileNotFoundError(mixName);
+            }
+            const buffer = await fetchEntry(mixName, isOptional);
+            if (!buffer) continue;
             onProgress(S.get("ts:import_importing", mixName));
             const virtualFile = VirtualFile.fromBytes(new Uint8Array(buffer), mixName);
             await this.importMixArchive(virtualFile, targetRfsRootDir, onProgress, S);
+        }
+        // Phase 2: every other manifest entry — campaign .mmx, taunts/, INIs,
+        // misc data files. These don't need any extraction; write them at the
+        // listed path so the runtime auto-discovery (loadExtraMixFiles for
+        // .mmx, Taunts.setDir for taunts/) finds them on first boot.
+        const dirCache = new Map<string, RealFileSystemDir>();
+        const getOrCreateSubDir = async (segments: string[]): Promise<RealFileSystemDir> => {
+            const key = segments.join('/');
+            const cached = dirCache.get(key);
+            if (cached) return cached;
+            let dir = targetRfsRootDir;
+            for (let i = 0; i < segments.length; i++) {
+                dir = await dir.getOrCreateDirectory(segments[i], true);
+            }
+            dirCache.set(key, dir);
+            return dir;
+        };
+        for (const entry of manifest.files) {
+            if (essentialMixes.has(entry.path)) continue;
+            onProgress(S.get("ts:import_importing", entry.path));
+            const buffer = await fetchEntry(entry.path, true);
+            if (!buffer) continue;
+            const segments = entry.path.split('/');
+            const fileName = segments.pop()!;
+            const targetDir = segments.length > 0 ? await getOrCreateSubDir(segments) : targetRfsRootDir;
+            const vf = VirtualFile.fromBytes(new Uint8Array(buffer), fileName);
+            await targetDir.writeFile(vf);
         }
         try {
             await targetRfsRootDir.openFile("ra2.mix");
