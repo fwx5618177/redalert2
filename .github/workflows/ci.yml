@@ -47,12 +47,20 @@ jobs:
       - name: Production build
         run: pnpm build
 
-      - name: Bundle size summary
-        run: |
-          if [ -d apps/web/dist ]; then
-            du -sh apps/web/dist
-            find apps/web/dist -name '*.js' -size +50k -exec ls -lh {} +
-          fi
+      # Bundle size gated against `.bundle-baseline.json`. CI fails if any
+      # tracked chunk exceeds its `maxBytes`. Tighten or widen via deliberate
+      # edits to the JSON file. dist/stats.html (rollup-plugin-visualizer
+      # treemap) is uploaded as artifact for visual inspection.
+      - name: Bundle size (regression gate)
+        run: node scripts/check-bundle-baseline.mjs
+
+      - name: Upload bundle stats
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-stats
+          path: apps/web/dist/stats.html
+          retention-days: 7
 
   smoke:
     name: Playwright smoke

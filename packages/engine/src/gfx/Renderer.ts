@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import Stats from 'stats.js';
 import { EventDispatcher } from '@ra2/util/event';
+import { SCREENSHOT_MODE } from '@ra2/util/screenshotMode';
 import { RendererError } from './RendererError';
 export class Renderer {
     private width: number;
@@ -68,7 +69,11 @@ export class Renderer {
         try {
             renderer = new THREE.WebGLRenderer({
                 canvas: canvas,
-                preserveDrawingBuffer: true,
+                // Off by default — costs a per-frame GPU→CPU readback.
+                // Enable via ?screenshot URL param when a tester needs to
+                // call canvas.toDataURL() (Playwright's page.screenshot
+                // uses CDP, doesn't need this).
+                preserveDrawingBuffer: SCREENSHOT_MODE,
                 powerPreference: 'high-performance',
             });
         }

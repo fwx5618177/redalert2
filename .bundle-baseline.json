@@ -1,0 +1,13 @@
+{
+  "comment": "Maximum allowed sizes for prod build assets. CI fails if exceeded. ~10% headroom over the 2026-05-07 measurements to absorb normal minifier jitter; tighten or loosen via deliberate edits, not auto-update. See scripts/check-bundle-baseline.mjs.",
+  "chunks": {
+    "index": { "maxBytes": 620000 },
+    "vendor-three": { "maxBytes": 800000 },
+    "vendor-react": { "maxBytes": 215000 },
+    "vendor-qr": { "maxBytes": 170000 },
+    "vendor-7z": { "maxBytes": 65000 },
+    "vendor-ffmpeg": { "maxBytes": 8000 }
+  },
+  "totalAssetsMaxBytes": 9500000,
+  "lastReviewed": "2026-05-07"
+}

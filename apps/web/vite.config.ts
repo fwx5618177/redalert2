@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import basicSsl from '@vitejs/plugin-basic-ssl';
+import { visualizer } from 'rollup-plugin-visualizer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,7 +34,20 @@ const pkgSrc = (name: string) =>
 
 export default defineConfig({
     root: here,
-    plugins: [react(), ...(manualHttpsConfig ? [] : [basicSsl()])],
+    plugins: [
+        react(),
+        ...(manualHttpsConfig ? [] : [basicSsl()]),
+        // Writes apps/web/dist/stats.html (bundle treemap) on every prod build.
+        // Open it in a browser to see what's in each chunk. Generated only
+        // during build; harmless during dev.
+        visualizer({
+            filename: 'dist/stats.html',
+            template: 'treemap',
+            gzipSize: true,
+            brotliSize: true,
+            sourcemap: false,
+        }) as any,
+    ],
     server: {
         host: '0.0.0.0',
         port: devPort,

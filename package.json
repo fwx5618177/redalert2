@@ -14,6 +14,7 @@
     "typecheck:entry": "pnpm --filter @ra2/web typecheck:entry",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:baseline": "node scripts/check-typecheck-baseline.mjs",
+    "bundle:baseline": "pnpm build && node scripts/check-bundle-baseline.mjs",
     "lint": "eslint packages apps/web/src",
     "lint:boundaries": "eslint packages apps/web/src --rule '{\"boundaries/element-types\":\"error\"}'",
     "test": "vitest run",

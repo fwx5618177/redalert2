@@ -528,33 +528,37 @@ export class Application {
         try {
             const gameRes = new GameRes(this.getVersion(), modName || undefined, this.fsAccessLib, this.localPrefs, this.strings, this.rootEl, this.createSplashScreenInterface(), this.viewportAdapter, this.config, "res/", this.sentry);
             const { configToPersist, cdnResLoader } = await gameRes.init(gameResConfig, (error, strings) => this.handleGameResLoadError(error, strings), (error, strings) => this.handleGameResImportError(error, strings));
-            try {
-                const vfsAny: any = (Engine as any).vfs;
-                if (vfsAny?.debugListFileOwners) {
-                    vfsAny.debugListFileOwners('rules.ini');
-                    vfsAny.debugListFileOwners('art.ini');
-                    vfsAny.debugListFileOwners('rulescd.ini');
-                    vfsAny.debugListFileOwners('artcd.ini');
-                }
+            // Diagnostic block — gated on DEV so production builds tree-shake
+            // the dozens of console.log calls plus the heavyweight INI head reads.
+            if (import.meta.env.DEV) {
                 try {
-                    const rulesFile = (Engine as any).vfs.openFile('rules.ini');
-                    const rulesHead = rulesFile.readAsString().split(/\r?\n/).slice(0, 40);
-                    console.log('[Diag] rules.ini head (first 40 lines):', rulesHead);
+                    const vfsAny: any = (Engine as any).vfs;
+                    if (vfsAny?.debugListFileOwners) {
+                        vfsAny.debugListFileOwners('rules.ini');
+                        vfsAny.debugListFileOwners('art.ini');
+                        vfsAny.debugListFileOwners('rulescd.ini');
+                        vfsAny.debugListFileOwners('artcd.ini');
+                    }
+                    try {
+                        const rulesFile = (Engine as any).vfs.openFile('rules.ini');
+                        const rulesHead = rulesFile.readAsString().split(/\r?\n/).slice(0, 40);
+                        console.log('[Diag] rules.ini head (first 40 lines):', rulesHead);
+                    }
+                    catch (e) {
+                        console.warn('[Diag] Failed to read rules.ini head:', e);
+                    }
+                    try {
+                        const rulesCdFile = (Engine as any).vfs.openFile('rulescd.ini');
+                        const rulesCdHead = rulesCdFile.readAsString().split(/\r?\n/).slice(0, 40);
+                        console.log('[Diag] rulescd.ini head (first 40 lines):', rulesCdHead);
+                    }
+                    catch (e) {
+                        console.warn('[Diag] Failed to read rulescd.ini head:', e);
+                    }
                 }
                 catch (e) {
-                    console.warn('[Diag] Failed to read rules.ini head:', e);
+                    console.warn('[Diag] VFS ownership diagnostics failed:', e);
                 }
-                try {
-                    const rulesCdFile = (Engine as any).vfs.openFile('rulescd.ini');
-                    const rulesCdHead = rulesCdFile.readAsString().split(/\r?\n/).slice(0, 40);
-                    console.log('[Diag] rulescd.ini head (first 40 lines):', rulesCdHead);
-                }
-                catch (e) {
-                    console.warn('[Diag] Failed to read rulescd.ini head:', e);
-                }
-            }
-            catch (e) {
-                console.warn('[Diag] VFS ownership diagnostics failed:', e);
             }
             if (configToPersist) {
                 if (configToPersist.isCdn()) {
@@ -572,13 +576,18 @@ export class Application {
                 : undefined;
             ImageContext.vfs = Engine.vfs;
             try {
-                console.log("Engine.iniFiles.has('rules.ini'):", Engine.iniFiles.has("rules.ini"));
-                console.log("Engine.iniFiles.has('art.ini'):", Engine.iniFiles.has("art.ini"));
-                console.log("[Diag] Engine.iniFiles.has('rulescd.ini'):", Engine.iniFiles.has("rulescd.ini"));
-                console.log("[Diag] Engine.iniFiles.has('artcd.ini'):", Engine.iniFiles.has("artcd.ini"));
                 Engine.loadRules();
-                try {
-                    const rulesIniUsed = Engine.getFileNameVariant('rules.ini');
+                // Diagnostic block — gated on DEV. Prints rules.ini/art.ini
+                // load state, merged-rule contents, CDEST/ASWLauncher/APSplash
+                // probes, etc. ~150 lines of console.log only useful when
+                // hand-debugging INI merging.
+                if (import.meta.env.DEV) {
+                    console.log("Engine.iniFiles.has('rules.ini'):", Engine.iniFiles.has("rules.ini"));
+                    console.log("Engine.iniFiles.has('art.ini'):", Engine.iniFiles.has("art.ini"));
+                    console.log("[Diag] Engine.iniFiles.has('rulescd.ini'):", Engine.iniFiles.has("rulescd.ini"));
+                    console.log("[Diag] Engine.iniFiles.has('artcd.ini'):", Engine.iniFiles.has("artcd.ini"));
+                    try {
+                        const rulesIniUsed = Engine.getFileNameVariant('rules.ini');
                     const artIniUsed = Engine.getFileNameVariant('art.ini');
                     console.log('[Diag] Using base INIs:', { rulesIniUsed, artIniUsed });
                     const hasAPSplashSection = !!Engine.getIni(artIniUsed).getSection('APSplash') || !!Engine.getIni(rulesIniUsed).getSection('APSplash');
@@ -723,10 +732,11 @@ export class Application {
                         merged: !!mergedArt?.getSection(name),
                     });
                     console.log('[Diag] Art sections presence:', probe('GI'), probe('CONS'), probe('SEAL'), probe('ENGINEER'), probe('ROCK'));
-                }
-                catch (e) {
-                    console.warn('[Diag] Art presence diagnostics failed:', e);
-                }
+                    }
+                    catch (e) {
+                        console.warn('[Diag] Art presence diagnostics failed:', e);
+                    }
+                } // end if (import.meta.env.DEV)
             }
             catch (err) {
                 console.error('[Application] Engine.loadRules() failed:', err);

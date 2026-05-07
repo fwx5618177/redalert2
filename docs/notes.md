@@ -285,6 +285,24 @@ Single-instance `three` is enforced three ways:
 Without all three, the `THREE.WARNING: Multiple instances of Three.js`
 console warning fires.
 
+### Bundle regression gate (`.bundle-baseline.json`)
+
+`scripts/check-bundle-baseline.mjs` measures every prod chunk against caps
+in `.bundle-baseline.json` and fails CI if any tracked chunk exceeds its
+`maxBytes`. Mirrors the typecheck-baseline pattern: tighten or loosen via
+deliberate edits, not auto-update. `apps/web/dist/stats.html`
+(rollup-plugin-visualizer treemap) is the source of truth for what's in
+each chunk; CI uploads it as an artifact.
+
+### Conditional rendering features
+
+- `?screenshot` URL flag toggles WebGL `preserveDrawingBuffer` on (per-frame
+  GPU→CPU readback, ~5-10% frame budget). Off by default. Playwright's
+  `page.screenshot()` does NOT need this — it uses CDP's separate path.
+- Diagnostic boot logs (~40 `[Diag]` console calls in Application.ts that
+  dump rules.ini head, merged-rules CDEST/Warhead/APSplash probes, etc.)
+  are gated on `import.meta.env.DEV` and tree-shaken from prod builds.
+
 ---
 
 ## 6. Build alignment tracker

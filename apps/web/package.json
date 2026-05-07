@@ -10,17 +10,17 @@
     "typecheck:entry": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@ra2/util": "workspace:*",
     "@ra2/data": "workspace:*",
     "@ra2/engine": "workspace:*",
     "@ra2/game": "workspace:*",
-    "@ra2/network": "workspace:*",
     "@ra2/gui": "workspace:*",
+    "@ra2/network": "workspace:*",
     "@ra2/tools": "workspace:*",
+    "@ra2/util": "workspace:*",
+    "js-logger": "^1.6.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "three": "0.183.2",
-    "js-logger": "^1.6.1"
+    "three": "0.183.2"
   },
   "devDependencies": {
     "@types/react": "19.2.14",
@@ -28,6 +28,7 @@
     "@types/three": "0.183.1",
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "6.0.1",
+    "rollup-plugin-visualizer": "^7.0.1",
     "vite": "8.0.1"
   }
 }

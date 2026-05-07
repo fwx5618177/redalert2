@@ -201,14 +201,17 @@ redalert2/
 
 ```bash
 pnpm dev                   # 开发服务器（Vite，:4000）
-pnpm build                 # 生产构建（含 vendor-three/react/qr/7z/ffmpeg 命名 chunk）
+pnpm build                 # 生产构建（含 vendor-three/react/qr/7z/ffmpeg 命名 chunk + dist/stats.html 可视化）
 pnpm preview               # 预览生产构建
 pnpm typecheck             # 全项目 tsc --noEmit（surface 上游 pre-existing 债务）
 pnpm typecheck:baseline    # 与 .typecheck-baseline.json 比对，错误数不许增加
 pnpm typecheck:entry       # 仅入口（main.tsx + App.tsx）—— 快速 sanity check
+pnpm bundle:baseline       # build + 检查 chunk 大小是否超过 .bundle-baseline.json
 pnpm lint                  # ESLint + boundaries（强制 util ← data ← engine ← game ← gui ← tools 单向依赖）
 pnpm test                  # 单元测试（vitest）
 ```
+
+URL 标志位：`?screenshot` 开启 WebGL `preserveDrawingBuffer`（每帧 GPU→CPU 拷贝，仅 tester 需要 `canvas.toDataURL()` 时用）。`import.meta.env.DEV` 控制 ~40 行 `[Diag]` 启动诊断日志，生产构建自动 tree-shake 掉。
 
 CI 在 `.github/workflows/ci.yml` 配好：每个 PR 跑 `test` + `lint` + `typecheck:baseline`（防退化门）+ `build` + 5 个 Playwright 烟雾流程，artifact 自动上传。
 
